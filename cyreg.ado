@@ -1,5 +1,5 @@
-cap program drop campbellyogo
-program define campbellyogo, eclass
+cap program drop cyreg
+program define cyreg, eclass
         syntax varlist(min=2 numeric ts) [if], tablepath(string)
 
         cap tsset
