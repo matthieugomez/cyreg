@@ -5,7 +5,7 @@
 
 cap program drop cyreg
 program define cyreg, eclass
-        syntax varlist(min=2 numeric ts) [if] [in], tablepath(string) [nlag(string) NOGraph]
+        syntax varlist(min=2 numeric ts) [if] [in], tabledir(string) [nlag(string) NOGraph]
 
         cap tsset
         if _rc{
@@ -111,7 +111,7 @@ program define cyreg, eclass
 
         * if values are in table, pick up range
         preserve
-        use "`tablepath'", clear
+        use "`tabledir'/table2_appendix", clear
         qui gen tstat_dist = abs(`tstat' - tstat)
         qui gen delta_dist = abs(`delta' - delta)
         sort delta_dist tstat_dist
@@ -125,6 +125,7 @@ program define cyreg, eclass
         * Step 4: Compute the Bonferroni interval
         * note that omega = sigma_v if p == 1 so the second term disappears in the summation
         * ----------------------------
+
 
         foreach suffix in min max{
                 tempvar y`suffix'

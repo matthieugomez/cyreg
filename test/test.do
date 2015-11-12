@@ -5,7 +5,7 @@ insheet using "test/CRSP_A.txt", clear
 tsset time
 gen ep = ret - rf
 reg ep L.ldp
-cyreg ep L.ldp, tablepath("table.dta")
+cyreg ep L.ldp, tabledir("table")
 assert e(nlag) ==  1
 assert e(bet) ==  .1756569861580354
 assert e(delta) ==  -.7001412489946537
@@ -20,7 +20,7 @@ assert e(bmaxmin) ==  .0296727139488352
 assert e(bmaxmax) ==  .1785392755046223
 
 
-cyreg ep L.lep, tablepath("table.dta")
+cyreg ep L.lep, tabledir("table")
 assert e(nlag) ==  1
 assert e(bet) ==  .1746210803117575
 assert e(delta) ==  -.9308960406398238
