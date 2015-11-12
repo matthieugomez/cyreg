@@ -6,4 +6,4 @@ tsset date
 cyreg r L.x, tablepath(table.dta)
 ```
 
-The option nograph (or just nog) allows to not display the graph.
+The option `` nograph `` (or just nog) allows to not display the graph.
