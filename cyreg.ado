@@ -33,8 +33,17 @@ program define cyreg, eclass
         * run the predictive regression
         tempvar tempu tempusq
         qui reg `y' `x' if `touse'
-        local bet = _b[`x']
-        local SEbet = _se[`x']
+        local beta = _b[`x']
+        cap assert `beta' >= 0
+        if _rc{
+                display as error "beta is negative. Use the opposite of your predictor."
+                exit
+        }
+        local SEbeta = _se[`x']
+        local r2_a = e(r2_a)
+        tempname b V
+        mat `b' = e(b)
+        mat `V' = e(V)
         qui predict `tempu', res
         qui gen `tempusq' = `tempu'^2
         qui sum `tempusq'
@@ -99,7 +108,7 @@ program define cyreg, eclass
         * check whether values are in table
         cap assert inrange(`delta', -1 , 0)
         if _rc{
-                display as error "delta `delta' is outside the range -1/-0. Use the opposite of your predictor."
+                display as error "delta `delta' is outside the range -1/-0"
                 exit
         }
         cap assert inrange(`tstat', -5, 1) 
@@ -133,21 +142,31 @@ program define cyreg, eclass
                 qui reg `y`suffix'' `x' if `touse'
                 local b`suffix'min = _b[`x'] ///
                 + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
-                - 1.645 *  sqrt((1 - (`delta')^2))  * `SEbet'
+                - 1.645 *  sqrt((1 - (`delta')^2))  * `SEbeta'
                 local b`suffix'max = _b[`x'] ///
                 + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
-                + 1.645 * sqrt((1 - (`delta')^2))  * `SEbet'
+                + 1.645 * sqrt((1 - (`delta')^2))  * `SEbeta'
         }
         * output values
+
+
+
+
         ereturn clear
-        ereturn scalar nlag = `nlag'
-        ereturn scalar bet = `bet'
+        ereturn post `b' `V', obs(`T') esample(`touse') dof(2) depname(`y') 
+        /* non corrected regression */
+
+        /* correlation */
         ereturn scalar delta = `delta'
+        /* ar(p) structure */
+        ereturn scalar nlag = `nlag'
         ereturn scalar DFGLS = `tstat'
         ereturn scalar cmin = `cmin'
         ereturn scalar cmax = `cmax'
         ereturn scalar rhomin = `rhomin'
         ereturn scalar rhomax = `rhomax'
+
+        /* beta */
         ereturn scalar bminmin = `bminmin'
         ereturn scalar bminmax = `bminmax'
         ereturn scalar bmaxmin = `bmaxmin'
@@ -156,9 +175,13 @@ program define cyreg, eclass
         * ----------------------------
         * Step 5-6: Produce the chart if needed
         * ----------------------------
-        di "Number of lags : `nlag'"
-        di "Coefficient:" %9.3g `bet',  
-        di "Confidence interval: ["  %9.3g `bmaxmin' "," %9.3g `bminmax' "]"
+        ereturn display
+
+
+        di in gr "Number of lags:" in ye _column(70) %1.0f e(nlag)
+        di in gr "Correlation (delta):" in ye _column(70)  %4.3f e(delta)
+        di in gr "Persistence (rho) CI:" in ye _column(70)  "[`: display %4.3f e(rhomin)', `: display %4.3f e(rhomax)']"
+        di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(bmaxmin)', `: display %4.3f e(bminmax)']"
 
         if "`nograph'" == "" {
           local yrange = `=e(bminmax)'/2
