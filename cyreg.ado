@@ -2,10 +2,9 @@
 * the syntax is such that y = r_t and x = x_{t-1}
 * Should be testing for a positive predictive coefficient
 
-
-cap program drop cyreg
 program define cyreg, eclass
-        syntax varlist(min=2 numeric ts) [if] [in], tabledir(string) [nlag(string) NOGraph]
+        version 12.1
+        syntax varlist(min=2 numeric ts) [if] [in], tabledir(string) [ Nlag(integer 0) MAXlag(integer 10) NOGraph ]
 
         cap tsset
         if _rc{
@@ -22,8 +21,8 @@ program define cyreg, eclass
         * should it equal the number of observations in the regression (ie with L(1/p).x)?
         local T = r(N)
 
-        if "`nlag'" == ""{
-                bic F.`x', maxlag(10)
+        if `nlag' == 0 {
+                bic F.`x', maxlag(`maxlag')
                 local nlag = r(optlag)
         }
 
@@ -133,10 +132,10 @@ program define cyreg, eclass
                 (F.`x' - (`rho`suffix'') * `x')
                 qui reg `y`suffix'' `x' if `touse'
                 local b`suffix'min = _b[`x'] ///
-                + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho' ///
+                + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
                 - 1.645 *  sqrt((1 - (`delta')^2))  * `SEbet'
                 local b`suffix'max = _b[`x'] ///
-                + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho' ///
+                + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
                 + 1.645 * sqrt((1 - (`delta')^2))  * `SEbet'
         }
         * output values
@@ -182,9 +181,6 @@ program define cyreg, eclass
 end
 
 
-
-discard
-cap program drop bic
 program define bic, rclass
         syntax varlist(min=1 numeric ts) [if] [in], [maxlag(integer 10)]
         marksample touse
