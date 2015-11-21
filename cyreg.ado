@@ -46,17 +46,6 @@ program define cyreg, eclass
     else{
         qui reg `dx' `x' L(1/`=`nlag'-1').`dx' if `touse'
     }
-
-    * compute ci for rho
-    preserve
-    use "`tabledir'/table1_appendix", clear
-    keep if size == "95%"
-    qui gen tstat_dist = abs(`tstat' - tstat)
-    sort tstat_dist
-    local minrho = 1 + `=cmin[1]' / `T'
-    local maxrho = 1 + `=cmax[1]' / `T'
-    restore
-
     qui predict `rese', res
     tempvar resue
     qui gen `resue' = `rese' * `resu'
@@ -78,7 +67,6 @@ program define cyreg, eclass
     * run the predictive regression
     tempvar resu resusq
     qui reg `y' `newx' if `touse', `options'
-    local beta = _b[`newx']
     local SEbeta = _se[`newx']
     local r2 = e(r2)
     local r2_a = e(r2_a)
@@ -147,6 +135,15 @@ program define cyreg, eclass
     * ----------------------------
     * Step 3: Compute the confidence interval for c
     * ----------------------------
+    * compute ci for rho
+    preserve
+    use "`tabledir'/table1_appendix", clear
+    keep if size == "95%"
+    qui gen tstat_dist = abs(`tstat' - tstat)
+    sort tstat_dist
+    local minrho = 1 + `=cmin[1]' / `T'
+    local maxrho = 1 + `=cmax[1]' / `T'
+    restore
 
     * if values are in table, pick up range
     preserve
