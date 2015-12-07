@@ -6,10 +6,9 @@ The program computes the 90% confidence band using the CY method.
 Syntax
 ```
 tsset date
-cyreg r L.x, tabledir(table)
+cyreg r L.x
 ```
 
 Options:
-- `tabledir` points to the `table` directory
 - (optional) `nograph` (or just `nog`) to not display the graph
 - (optional) `lag` to impose number of lags (otherwise chosen via BIC criterion)

@@ -1,19 +1,18 @@
-adopath + "/Users/Matthieu/Dropbox/Github/stata-cyreg"
 cd "/Users/Matthieu/Dropbox/Github/stata-cyreg"
 do cyreg.ado
 insheet using "test/CRSP_A.txt", clear
 tsset time
 gen ep = ret - rf
 reg ep L.ldp
-cyreg ep L.ldp, tabledir("table")
+cyreg ep L.ldp
 assert e(nlag) ==  1
-assert e(bet) ==  .1756569861580354
+assert _b[L.ldp] ==  .1756569861580354
 assert e(delta) ==  -.7001412489946537
 assert e(DFGLS) ==  -.8822743570558439
 assert e(cmin) ==  -4.920000076293945
 assert e(cmax) ==  .9110000133514404
-assert e(rhomin) ==  .9352631568908691
-assert e(rhomax) ==  1.01198684228094
+assert e(minrho) ==  .9352631568908691
+assert e(maxrho) ==  1.01198684228094
 assert e(bminmin) ==  .0989143626194303
 assert e(bminmax) ==  .2477809241752174
 assert e(bmaxmin) ==  .0296727139488352
