@@ -17,7 +17,6 @@ program define cyreg, eclass
   tokenize `varlist'
   local y `1'
   local x `2'
-  qui count if `touse'
   if `nlag' == 0 {
     bic F.`x', maxlag(`maxlag')
     local biclag = r(optlag)
@@ -29,7 +28,7 @@ program define cyreg, eclass
         * I *think* T equals number of periods used in the estimation
         markout `touse' L(1/`=`biclag'-1').`x'
       } 
-      count if `touse'
+      qui count if `touse'
       local T = r(N)
 
 
@@ -121,10 +120,9 @@ program define cyreg, eclass
     * ----------------------------
     * Step 3: Compute the DF-GLS statistic for rho
     * ----------------------------
-    reg F.`newx' `newx' if `touse'
+    qui reg F.`newx' `newx' if `touse'
     local rho = _b[`newx']
-    di `=`biclag'-1'
-    dfgls `newx', maxlag(`=`biclag'-1') notrend
+    qui dfgls `newx', maxlag(`=`biclag'-1') notrend
     if `biclag' == 1{
       local tstat = r(dft0)
     }
@@ -146,9 +144,6 @@ program define cyreg, eclass
     keep if size == "95%"
     qui gen tstat_dist = abs(`tstat' - tstat)
     sort tstat_dist
-    di "ok1"
-    di `tstat'
-    di "`=cmin[1]'" "`=cmax[1]'"
     local minrho = 1 + `=cmin[1]' / `T'
     local maxrho = 1 + `=cmax[1]' / `T'
     restore
@@ -159,9 +154,6 @@ program define cyreg, eclass
     qui gen tstat_dist = abs(`tstat' - tstat)
     qui gen delta_dist = abs(`delta' - delta)
     sort delta_dist tstat_dist
-    list if _n == 1
-    di "ok2"
-    di "`=cmin[1]'" "`=cmax[1]'"
     local Qminrho = 1 + `=cmin[1]' / `T'
     local Qmaxrho = 1 + `=cmax[1]' / `T'
     local Qminc = cmin[1]
