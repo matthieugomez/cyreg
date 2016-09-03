@@ -51,7 +51,6 @@ program define cyreg, eclass
       qui predict `rese', res
       tempvar resue
       qui gen `resue' = `rese' * `resu'
-      sum `resue'
       local invx = r(mean) > 0
       if `invx'{
         local inv
