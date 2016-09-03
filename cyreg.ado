@@ -3,64 +3,67 @@
 * Should be testing for a positive predictive coefficient
 
 program define cyreg, eclass
-    version 12.1
-    syntax varlist(min=2 numeric ts) [if] [in],[ Nlag(integer 0) MAXlag(integer 10) NOGraph * ]
-    ereturn clear
-    cap tsset
-    if _rc{
-        display as error "dataset must be tsset"
-    }
+  version 12.1
+  syntax varlist(min=2 numeric ts) [if] [in],[ Nlag(integer 0) MAXlag(integer 10) NOGraph * ]
+  ereturn clear
+  cap tsset
+  if _rc{
+    display as error "dataset must be tsset"
+  }
 
-    marksample touse
-    fvrevar `varlist' if `touse'
-    local varlist = r(varlist)
-    tokenize `varlist'
-    local y `1'
-    local x `2'
-    qui count if `touse'
-    if `nlag' == 0 {
-        bic F.`x', maxlag(`maxlag')
-        local nlag = r(optlag)
-    }
-    if `nlag' > 1{
+  marksample touse
+  fvrevar `varlist' if `touse'
+  local varlist = r(varlist)
+  tokenize `varlist'
+  local y `1'
+  local x `2'
+  qui count if `touse'
+  if `nlag' == 0 {
+    bic F.`x', maxlag(`maxlag')
+    local biclag = r(optlag)
+  }
+  else{
+    local biclag = `nlag'
+  }
+  if `biclag' > 1{
         * I *think* T equals number of periods used in the estimation
-        markout `touse' L(1/`=`nlag'-1').`x'
-    } 
-    count if `touse'
-    local T = r(N)
+        markout `touse' L(1/`=`biclag'-1').`x'
+      } 
+      count if `touse'
+      local T = r(N)
 
 
-    /* compute b, V and check delta < 0 */
-    tempvar resu
-    qui reg `y' `x' if `touse'
-    tempname b V
-    mat `b' = e(b)
-    mat `V' = e(V)
-    qui predict `resu', res
+      /* compute b, V and check delta < 0 */
+      tempvar resu
+      qui reg `y' `x' if `touse'
+      tempname b V
+      mat `b' = e(b)
+      mat `V' = e(V)
+      qui predict `resu', res
 
-    tempvar rese dx
-    qui gen `dx' = F.`x' - `x'
-    if `nlag' == 1{
+      tempvar rese dx
+      qui gen `dx' = F.`x' - `x'
+      if `biclag' == 1{
         qui reg `dx' `x' if `touse'
-    }
-    else{
-        qui reg `dx' `x' L(1/`=`nlag'-1').`dx' if `touse'
-    }
-    qui predict `rese', res
-    tempvar resue
-    qui gen `resue' = `rese' * `resu'
-    sum `resue'
-    local invx = r(mean) > 0
-    if `invx'{
+      }
+      else{
+        qui reg `dx' `x' L(1/`=`biclag'-1').`dx' if `touse'
+      }
+      qui predict `rese', res
+      tempvar resue
+      qui gen `resue' = `rese' * `resu'
+      sum `resue'
+      local invx = r(mean) > 0
+      if `invx'{
         local inv
         tempvar newx
         gen `newx' = -`x'
-    }
-    else{
+      }
+      else{
         local newx `x'
-    }
+      }
 
-
+    
     * ----------------------------
     * Step 1: run OLS regressions
     * ----------------------------
@@ -81,14 +84,14 @@ program define cyreg, eclass
     tempvar dx
     qui gen `dx' = F.`newx' - `newx'
     local sumpsi = 0
-    if `nlag' == 1{
-        qui reg `dx' `newx' if `touse'
+    if `biclag' == 1{
+      qui reg `dx' `newx' if `touse'
     }
     else{
-        qui reg `dx' `newx' L(1/`=`nlag'-1').`dx' if `touse'
-        foreach i of numlist 1/`=`nlag'-1'{
-            local sumpsi = `sumpsi' + _b[L`i'.`dx']
-        }
+      qui reg `dx' `newx' L(1/`=`biclag'-1').`dx' if `touse'
+      foreach i of numlist 1/`=`biclag'-1'{
+        local sumpsi = `sumpsi' + _b[L`i'.`dx']
+      }
     }
     qui predict `rese', res
     qui gen `resesq' = `rese'^2
@@ -104,7 +107,6 @@ program define cyreg, eclass
 
     local delta = `sigma_ue' / (`sigma_u' * `sigma_e')
 
-
     * ----------------------------
     * Step 2: Run the AR(1) regression
     * ----------------------------
@@ -119,18 +121,21 @@ program define cyreg, eclass
     * ----------------------------
     * Step 3: Compute the DF-GLS statistic for rho
     * ----------------------------
-    qui dfgls F.`newx' if `touse', maxlag(`=`nlag'-1') notrend
-    if `nlag' == 1{
-        local tstat = r(dft0)
+    reg F.`newx' `newx' if `touse'
+    local rho = _b[`newx']
+    di `=`biclag'-1'
+    dfgls `newx', maxlag(`=`biclag'-1') notrend
+    if `biclag' == 1{
+      local tstat = r(dft0)
     }
-    else if `nlag' > 1{
-        matrix r = r(results)
-        local tstat = r[`=`nlag'-1', 5]
+    else if `biclag' > 1{
+      matrix r = r(results)
+      local tstat = r[`=`biclag'-1', 5]
     }
     * check whether values are in table
     if  !inrange(`tstat', -5, 1) {
-        display as error "tstat `tstat' is outside the range -5/1"
-        exit
+      display as error "DF-GLS tstat `tstat' is outside the range -5/1"
+      exit
     }
     * ----------------------------
     * Step 3: Compute the confidence interval for c
@@ -141,16 +146,22 @@ program define cyreg, eclass
     keep if size == "95%"
     qui gen tstat_dist = abs(`tstat' - tstat)
     sort tstat_dist
+    di "ok1"
+    di `tstat'
+    di "`=cmin[1]'" "`=cmax[1]'"
     local minrho = 1 + `=cmin[1]' / `T'
     local maxrho = 1 + `=cmax[1]' / `T'
     restore
 
-    * if values are in table, pick up range
+    /* now we're picking the  CI in the Bonferroni q test */
     preserve
     make_table2_appendix
     qui gen tstat_dist = abs(`tstat' - tstat)
-    qui gen delta_dist = abs(`newdelta' - delta)
+    qui gen delta_dist = abs(`delta' - delta)
     sort delta_dist tstat_dist
+    list if _n == 1
+    di "ok2"
+    di "`=cmin[1]'" "`=cmax[1]'"
     local Qminrho = 1 + `=cmin[1]' / `T'
     local Qmaxrho = 1 + `=cmax[1]' / `T'
     local Qminc = cmin[1]
@@ -163,16 +174,16 @@ program define cyreg, eclass
     * ----------------------------
 
     foreach suffix in min max{
-        tempvar y`suffix'
-        qui gen `y`suffix'' = `y' - (`sigma_ue') / (`sigma_e'^2) * ///
-        (F.`newx' - (`Q`suffix'rho') * `newx')
-        qui reg `y`suffix'' `newx' if `touse'
-        local Q`suffix'bmin = _b[`newx'] ///
-        + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
-        - 1.645 *  sqrt((1 - (`delta')^2))  * `SEbeta'
-        local Q`suffix'bmax = _b[`newx'] ///
-        + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
-        + 1.645 * sqrt((1 - (`delta')^2))  * `SEbeta'
+      tempvar y`suffix'
+      qui gen `y`suffix'' = `y' - (`sigma_ue') / (`sigma_e'^2) * ///
+      (F.`newx' - (`Q`suffix'rho') * `newx')
+      qui reg `y`suffix'' `newx' if `touse'
+      local Q`suffix'bmin = _b[`newx'] ///
+      + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
+      - 1.645 *  sqrt((1 - (`delta')^2))  * `SEbeta'
+      local Q`suffix'bmax = _b[`newx'] ///
+      + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
+      + 1.645 * sqrt((1 - (`delta')^2))  * `SEbeta'
     }
     * output values
 
@@ -186,16 +197,17 @@ program define cyreg, eclass
     /* non corrected regression */
     /* correlation */
     if `invx'{
-        ereturn scalar delta = -`delta'
+      ereturn scalar delta = -`delta'
     }
     else{
-        ereturn scalar delta = `delta'
+      ereturn scalar delta = `delta'
     }
 
     /* ar(p) structure */
-    ereturn scalar nlag = `nlag'
+    ereturn scalar nlag = `biclag'
     ereturn scalar DFGLS = `tstat'
     ereturn scalar minrho = `minrho'
+    ereturn scalar rho = `rho'
     ereturn scalar maxrho = `maxrho'
     ereturn scalar Qminc = `Qminc'
     ereturn scalar Qmaxc = `Qmaxc'
@@ -204,16 +216,16 @@ program define cyreg, eclass
 
     /* beta */
     if `invx'{
-        ereturn scalar Qminbmax = -`Qminbmin'
-        ereturn scalar Qminbmin = -`Qminbmax'
-        ereturn scalar Qmaxbmax = -`Qmaxbmin'
-        ereturn scalar Qmaxbmin = -`Qmaxbmax'
+      ereturn scalar Qminbmax = -`Qminbmin'
+      ereturn scalar Qminbmin = -`Qminbmax'
+      ereturn scalar Qmaxbmax = -`Qmaxbmin'
+      ereturn scalar Qmaxbmin = -`Qmaxbmax'
     }
     else{
-        ereturn scalar Qminbmin = `Qminbmin'
-        ereturn scalar Qminbmax = `Qminbmax'
-        ereturn scalar Qmaxbmin = `Qmaxbmin'
-        ereturn scalar Qmaxbmax = `Qmaxbmax'
+      ereturn scalar Qminbmin = `Qminbmin'
+      ereturn scalar Qminbmax = `Qminbmax'
+      ereturn scalar Qmaxbmin = `Qmaxbmin'
+      ereturn scalar Qmaxbmax = `Qmaxbmax'
     }
 
     * ----------------------------
@@ -222,7 +234,7 @@ program define cyreg, eclass
     ereturn display
     di in gr "Number of lags:" in ye _column(70) %1.0f e(nlag)
     di in gr "Correlation (delta):" in ye _column(70)  %4.3f e(delta)
-    di in gr "Persistence (rho) CI:" in ye _column(70)  "[`: display %4.3f e(minrho)', `: display %4.3f e(maxrho)']"
+    di in gr "Persistence (rho) 95 % CI:" in ye _column(70)  "[`: display %4.3f e(minrho)', `: display %4.3f e(maxrho)']"
     di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(Qmaxbmin)', `: display %4.3f e(Qminbmax)']"
 
     if "`nograph'" == "" {
@@ -231,48 +243,48 @@ program define cyreg, eclass
       local xlabelmin = ceil((`Qminrho' - 0.5 * (`Qmaxrho' - `Qminrho')) * 100) / 100
       local xlabelmax = ceil((max(1,`Qmaxrho') + 0.5 * (`Qmaxrho' -`Qminrho')) * 100) / 100
       twoway (scatteri `=e(Qminbmax)' `Qminrho' `=e(Qmaxbmax)' `Qmaxrho' ///
-        , connect(l)) ///
+      , connect(l)) ///
       (scatteri `=e(Qminbmin)' `Qminrho' `=e(Qmaxbmin)' `Qmaxrho' ///
-        , connect(l)) ///
+      , connect(l)) ///
       , xline(1, lpattern(solid) lcolor(black)) ///
       yline(0, lpattern(solid) lcolor(black)) ///
-      ylabel(`ylabelmin'(0.1)`ylabelmax') ///
+      ylabel(`ylabelmin'(0.1)`ylabelmax', angle(0)) ///
       xlabel(`xlabelmin'(0.02)`xlabelmax') ///
       legend(order(1 "upper" 2 "lower")) ///
       xtitle("Persistence rho") ytitle("Predictive coefficient beta") ///
-      graphregion(fcolor(white)) 
-  }
-end
+      graphregion(fcolor(white))  bgcolor(white)
+    }
+  end
 
 
-program define bic, rclass
+  program define bic, rclass
     syntax varlist(min=1 numeric ts) [if] [in], [maxlag(integer 10)]
     marksample touse
     fvrevar `varlist' if `touse'
     local x = r(varlist)
     cap assert `maxlag' >= 1
     if _rc{
-        di as error "maxlag must be >= 1"
-        exit
+      di as error "maxlag must be >= 1"
+      exit
     }
     foreach nlag of numlist 1/`maxlag'{
-        qui reg `x' L(1/`nlag').`x' if `touse'
-        qui estat ic
-        mat s = r(S)
-        if `nlag' == 1{
-            local optlag = 1
-            local bic = s[1, 6]
+      qui reg `x' L(1/`nlag').`x' if `touse'
+      qui estat ic
+      mat s = r(S)
+      if `nlag' == 1{
+        local optlag = 1
+        local bic = s[1, 6]
+      }
+      else{
+        local newbic = s[1, 6]
+        if `newbic' < `bic'{
+          local optlag = `nlag'
+          local bic = `newbic'
         }
-        else{
-            local newbic = s[1, 6]
-            if `newbic' < `bic'{
-                local optlag = `nlag'
-                local bic = `newbic'
-            }
-        }
+      }
     }
     return scalar optlag = `optlag'
-end
+  end
 
 /***************************************************************************************************
 * side function computing the DF-GLS statistic
@@ -316,194 +328,194 @@ end
 ***************************************************************************************************/
 
 program define make_table1_appendix
-    tempfile postfile
-    tempname postname
-    postfile `postname' float tstat str5 size float cmax float cmin using `postfile'
-   post `postname' (-5.00)    ("80%") (-34.615) (-60.606)
-   post `postname' (-5.00)    ("90%") (-31.057) (-64.454)
-   post `postname' (-5.00)    ("95%") (-28.030) (-67.777)
-   post `postname' (-4.90)    ("80%") (-33.053) (-58.491)
-   post `postname' (-4.90)    ("90%") (-29.528) (-62.272)
-   post `postname' (-4.90)    ("95%") (-26.584) (-65.635)
-   post `postname' (-4.80)    ("80%") (-31.511) (-56.448)
-   post `postname' (-4.80)    ("90%") (-28.113) (-60.181)
-   post `postname' (-4.80)    ("95%") (-25.123) (-63.574)
-   post `postname' (-4.70)    ("80%") (-29.985) (-54.518)
-   post `postname' (-4.70)    ("90%") (-26.666) (-58.063)
-   post `postname' (-4.70)    ("95%") (-23.698) (-61.304)
-   post `postname' (-4.60)    ("80%") (-28.458) (-52.521)
-   post `postname' (-4.60)    ("90%") (-25.237) (-56.039)
-   post `postname' (-4.60)    ("95%") (-22.422) (-59.173)
-   post `postname' (-4.50)    ("80%") (-27.018) (-50.534)
-   post `postname' (-4.50)    ("90%") (-23.837) (-54.094)
-   post `postname' (-4.50)    ("95%") (-21.067) (-57.120)
-   post `postname' (-4.40)    ("80%") (-25.623) (-48.674)
-   post `postname' (-4.40)    ("90%") (-22.513) (-52.078)
-   post `postname' (-4.40)    ("95%") (-19.717) (-55.107)
-   post `postname' (-4.30)    ("80%") (-24.251) (-46.779)
-   post `postname' (-4.30)    ("90%") (-21.166) (-50.144)
-   post `postname' (-4.30)    ("95%") (-18.514) (-53.097)
-   post `postname' (-4.20)    ("80%") (-22.950) (-44.920)
-   post `postname' (-4.20)    ("90%") (-19.827) (-48.211)
-   post `postname' (-4.20)    ("95%") (-17.293) (-51.119)
-   post `postname' (-4.10)    ("80%") (-21.640) (-43.127)
-   post `postname' (-4.10)    ("90%") (-18.624) (-46.362)
-   post `postname' (-4.10)    ("95%") (-16.058) (-49.147)
-   post `postname' (-4.00)    ("80%") (-20.263) (-41.379)
-   post `postname' (-4.00)    ("90%") (-17.412) (-44.481)
-   post `postname' (-4.00)    ("95%") (-14.964) (-47.207)
-   post `postname' (-3.90)    ("80%") (-19.036) (-39.660)
-   post `postname' (-3.90)    ("90%") (-16.190) (-42.639)
-   post `postname' (-3.90)    ("95%") (-13.870) (-45.364)
-   post `postname' (-3.80)    ("80%") (-17.847) (-37.834)
-   post `postname' (-3.80)    ("90%") (-15.110) (-40.906)
-   post `postname' (-3.80)    ("95%") (-12.720) (-43.497)
-   post `postname' (-3.70)    ("80%") (-16.676) (-36.197)
-   post `postname' (-3.70)    ("90%") (-14.057) (-39.168)
-   post `postname' (-3.70)    ("95%") (-11.626) (-41.707)
-   post `postname' (-3.60)    ("80%") (-15.535) (-34.559)
-   post `postname' (-3.60)    ("90%") (-12.916) (-37.388)
-   post `postname' (-3.60)    ("95%") (-10.627) (-39.948)
-   post `postname' (-3.50)    ("80%") (-14.434) (-32.926)
-   post `postname' (-3.50)    ("90%") (-11.803) (-35.669)
-   post `postname' (-3.50)    ("95%") (-9.597)  (-38.121)
-   post `postname' (-3.40)    ("80%") (-13.331) (-31.332)
-   post `postname' (-3.40)    ("90%") (-10.826) (-34.036)
-   post `postname' (-3.40)    ("95%") (-8.621)  (-36.430)
-   post `postname' (-3.30)    ("80%") (-12.225) (-29.799)
-   post `postname' (-3.30)    ("90%") (-9.830)  (-32.450)
-   post `postname' (-3.30)    ("95%") (-7.833)  (-34.717)
-   post `postname' (-3.20)    ("80%") (-11.226) (-28.342)
-   post `postname' (-3.20)    ("90%") (-8.836)  (-30.832)
-   post `postname' (-3.20)    ("95%") (-6.837)  (-33.097)
-   post `postname' (-3.10)    ("80%") (-10.253) (-26.894)
-   post `postname' (-3.10)    ("90%") (-8.066)  (-29.298)
-   post `postname' (-3.10)    ("95%") (-5.936)  (-31.536)
-   post `postname' (-3.00)    ("80%") (-9.247)  (-25.472)
-   post `postname' (-3.00)    ("90%") (-7.041)  (-27.860)
-   post `postname' (-3.00)    ("95%") (-5.118)  (-29.943)
-   post `postname' (-2.90)    ("80%") (-8.420)  (-24.090)
-   post `postname' (-2.90)    ("90%") (-6.214)  (-26.359)
-   post `postname' (-2.90)    ("95%") (-4.304)  (-28.436)
-   post `postname' (-2.80)    ("80%") (-7.544)  (-22.695)
-   post `postname' (-2.80)    ("90%") (-5.410)  (-24.961)
-   post `postname' (-2.80)    ("95%") (-3.609)  (-26.912)
-   post `postname' (-2.70)    ("80%") (-6.690)  (-21.357)
-   post `postname' (-2.70)    ("90%") (-4.711)  (-23.586)
-   post `postname' (-2.70)    ("95%") (-2.846)  (-25.457)
-   post `postname' (-2.60)    ("80%") (-5.924)  (-20.076)
-   post `postname' (-2.60)    ("90%") (-3.970)  (-22.188)
-   post `postname' (-2.60)    ("95%") (-2.243)  (-24.112)
-   post `postname' (-2.50)    ("80%") (-5.118)  (-18.818)
-   post `postname' (-2.50)    ("90%") (-3.242)  (-20.838)
-   post `postname' (-2.50)    ("95%") (-1.510)  (-22.704)
-   post `postname' (-2.40)    ("80%") (-4.420)  (-17.593)
-   post `postname' (-2.40)    ("90%") (-2.598)  (-19.541)
-   post `postname' (-2.40)    ("95%") (-1.020)  (-21.328)
-   post `postname' (-2.30)    ("80%") (-3.742)  (-16.427)
-   post `postname' (-2.30)    ("90%") (-1.981)  (-18.319)
-   post `postname' (-2.30)    ("95%") (-0.413)  (-19.991)
-   post `postname' (-2.20)    ("80%") (-3.075)  (-15.298)
-   post `postname' (-2.20)    ("90%") (-1.377)  (-17.135)
-   post `postname' (-2.20)    ("95%") (0.104)   (-18.783)
-   post `postname' (-2.10)    ("80%") (-2.465)  (-14.191)
-   post `postname' (-2.10)    ("90%") (-0.793)  (-15.966)
-   post `postname' (-2.10)    ("95%") (0.594)   (-17.574)
-   post `postname' (-2.00)    ("80%") (-1.887)  (-13.158)
-   post `postname' (-2.00)    ("90%") (-0.312)  (-14.833)
-   post `postname' (-2.00)    ("95%") (1.087)   (-16.365)
-   post `postname' (-1.90)    ("80%") (-1.348)  (-12.142)
-   post `postname' (-1.90)    ("90%") (0.152)   (-13.732)
-   post `postname' (-1.90)    ("95%") (1.492)   (-15.242)
-   post `postname' (-1.80)    ("80%") (-0.823)  (-11.184)
-   post `postname' (-1.80)    ("90%") (0.598)   (-12.721)
-   post `postname' (-1.80)    ("95%") (1.884)   (-14.155)
-   post `postname' (-1.70)    ("80%") (-0.412)  (-10.236)
-   post `postname' (-1.70)    ("90%") (1.018)   (-11.733)
-   post `postname' (-1.70)    ("95%") (2.203)   (-13.124)
-   post `postname' (-1.60)    ("80%") (0.035)   (-9.368)
-   post `postname' (-1.60)    ("90%") (1.384)   (-10.801)
-   post `postname' (-1.60)    ("95%") (2.583)   (-12.102)
-   post `postname' (-1.50)    ("80%") (0.429)   (-8.493)
-   post `postname' (-1.50)    ("90%") (1.762)   (-9.895)
-   post `postname' (-1.50)    ("95%") (2.870)   (-11.147)
-   post `postname' (-1.40)    ("80%") (0.795)   (-7.761)
-   post `postname' (-1.40)    ("90%") (2.000)   (-9.048)
-   post `postname' (-1.40)    ("95%") (3.132)   (-10.199)
-   post `postname' (-1.30)    ("80%") (1.133)   (-6.961)
-   post `postname' (-1.30)    ("90%") (2.270)   (-8.209)
-   post `postname' (-1.30)    ("95%") (3.352)   (-9.362)
-   post `postname' (-1.20)    ("80%") (1.437)   (-6.239)
-   post `postname' (-1.20)    ("90%") (2.541)   (-7.450)
-   post `postname' (-1.20)    ("95%") (3.532)   (-8.528)
-   post `postname' (-1.10)    ("80%") (1.695)   (-5.559)
-   post `postname' (-1.10)    ("90%") (2.738)   (-6.720)
-   post `postname' (-1.10)    ("95%") (3.683)   (-7.836)
-   post `postname' (-1.00)    ("80%") (1.884)   (-4.940)
-   post `postname' (-1.00)    ("90%") (2.935)   (-6.031)
-   post `postname' (-1.00)    ("95%") (3.827)   (-7.122)
-   post `postname' (-0.90)    ("80%") (2.062)   (-4.369)
-   post `postname' (-0.90)    ("90%") (3.080)   (-5.423)
-   post `postname' (-0.90)    ("95%") (3.967)   (-6.415)
-   post `postname' (-0.80)    ("80%") (2.246)   (-3.840)
-   post `postname' (-0.80)    ("90%") (3.199)   (-4.861)
-   post `postname' (-0.80)    ("95%") (4.072)   (-5.779)
-   post `postname' (-0.70)    ("80%") (2.375)   (-3.374)
-   post `postname' (-0.70)    ("90%") (3.299)   (-4.332)
-   post `postname' (-0.70)    ("95%") (4.166)   (-5.293)
-   post `postname' (-0.60)    ("80%") (2.502)   (-2.944)
-   post `postname' (-0.60)    ("90%") (3.385)   (-3.870)
-   post `postname' (-0.60)    ("95%") (4.256)   (-4.758)
-   post `postname' (-0.50)    ("80%") (2.593)   (-2.587)
-   post `postname' (-0.50)    ("90%") (3.470)   (-3.442)
-   post `postname' (-0.50)    ("95%") (4.316)   (-4.289)
-   post `postname' (-0.40)    ("80%") (2.683)   (-2.248)
-   post `postname' (-0.40)    ("90%") (3.543)   (-3.051)
-   post `postname' (-0.40)    ("95%") (4.376)   (-3.876)
-   post `postname' (-0.30)    ("80%") (2.769)   (-1.970)
-   post `postname' (-0.30)    ("90%") (3.609)   (-2.732)
-   post `postname' (-0.30)    ("95%") (4.436)   (-3.463)
-   post `postname' (-0.20)    ("80%") (2.841)   (-1.692)
-   post `postname' (-0.20)    ("90%") (3.675)   (-2.430)
-   post `postname' (-0.20)    ("95%") (4.495)   (-3.116)
-   post `postname' (-0.10)    ("80%") (2.914)   (-1.451)
-   post `postname' (-0.10)    ("90%") (3.741)   (-2.142)
-   post `postname' (-0.10)    ("95%") (4.542)   (-2.819)
-   post `postname' (0.00)     ("80%") (2.986)   (-1.239)
-   post `postname' (0.00)     ("90%") (3.794)   (-1.894)
-   post `postname' (0.00)     ("95%") (4.587)   (-2.534)
-   post `postname' (0.10)     ("80%") (3.040)   (-1.053)
-   post `postname' (0.10)     ("90%") (3.845)   (-1.653)
-   post `postname' (0.10)     ("95%") (4.632)   (-2.221)
-   post `postname' (0.20)     ("80%") (3.089)   (-0.887)
-   post `postname' (0.20)     ("90%") (3.896)   (-1.440)
-   post `postname' (0.20)     ("95%") (4.678)   (-2.005)
-   post `postname' (0.30)     ("80%") (3.139)   (-0.729)
-   post `postname' (0.30)     ("90%") (3.948)   (-1.255)
-   post `postname' (0.30)     ("95%") (4.723)   (-1.763)
-   post `postname' (0.40)     ("80%") (3.188)   (-0.577)
-   post `postname' (0.40)     ("90%") (3.999)   (-1.080)
-   post `postname' (0.40)     ("95%") (4.765)   (-1.560)
-   post `postname' (0.50)     ("80%") (3.238)   (-0.439)
-   post `postname' (0.50)     ("90%") (4.043)   (-0.919)
-   post `postname' (0.50)     ("95%") (4.803)   (-1.371)
-   post `postname' (0.60)     ("80%") (3.284)   (-0.314)
-   post `postname' (0.60)     ("90%") (4.088)   (-0.771)
-   post `postname' (0.60)     ("95%") (4.841)   (-1.196)
-   post `postname' (0.70)     ("80%") (3.328)   (-0.196)
-   post `postname' (0.70)     ("90%") (4.132)   (-0.639)
-   post `postname' (0.70)     ("95%") (4.879)   (-1.036)
-   post `postname' (0.80)     ("80%") (3.373)   (-0.084)
-   post `postname' (0.80)     ("90%") (4.177)   (-0.509)
-   post `postname' (0.80)     ("95%") (4.916)   (-0.892)
-   post `postname' (0.90)     ("80%") (3.418)   (0.021)
-   post `postname' (0.90)     ("90%") (4.222)   (-0.395)
-   post `postname' (0.90)     ("95%") (4.954)   (-0.753)
-   post `postname' (1.00)     ("80%") (3.462)   (0.106)
-   post `postname' (1.00)     ("90%") (4.260)   (-0.282)
-   post `postname' (1.00)     ("95%") (4.992)   (-0.627)
-   postclose `postname'
-   use `postfile', clear
+  tempfile postfile
+  tempname postname
+  postfile `postname' float tstat str5 size float cmax float cmin using `postfile'
+  post `postname' (-5.00)    ("80%") (-34.615) (-60.606)
+  post `postname' (-5.00)    ("90%") (-31.057) (-64.454)
+  post `postname' (-5.00)    ("95%") (-28.030) (-67.777)
+  post `postname' (-4.90)    ("80%") (-33.053) (-58.491)
+  post `postname' (-4.90)    ("90%") (-29.528) (-62.272)
+  post `postname' (-4.90)    ("95%") (-26.584) (-65.635)
+  post `postname' (-4.80)    ("80%") (-31.511) (-56.448)
+  post `postname' (-4.80)    ("90%") (-28.113) (-60.181)
+  post `postname' (-4.80)    ("95%") (-25.123) (-63.574)
+  post `postname' (-4.70)    ("80%") (-29.985) (-54.518)
+  post `postname' (-4.70)    ("90%") (-26.666) (-58.063)
+  post `postname' (-4.70)    ("95%") (-23.698) (-61.304)
+  post `postname' (-4.60)    ("80%") (-28.458) (-52.521)
+  post `postname' (-4.60)    ("90%") (-25.237) (-56.039)
+  post `postname' (-4.60)    ("95%") (-22.422) (-59.173)
+  post `postname' (-4.50)    ("80%") (-27.018) (-50.534)
+  post `postname' (-4.50)    ("90%") (-23.837) (-54.094)
+  post `postname' (-4.50)    ("95%") (-21.067) (-57.120)
+  post `postname' (-4.40)    ("80%") (-25.623) (-48.674)
+  post `postname' (-4.40)    ("90%") (-22.513) (-52.078)
+  post `postname' (-4.40)    ("95%") (-19.717) (-55.107)
+  post `postname' (-4.30)    ("80%") (-24.251) (-46.779)
+  post `postname' (-4.30)    ("90%") (-21.166) (-50.144)
+  post `postname' (-4.30)    ("95%") (-18.514) (-53.097)
+  post `postname' (-4.20)    ("80%") (-22.950) (-44.920)
+  post `postname' (-4.20)    ("90%") (-19.827) (-48.211)
+  post `postname' (-4.20)    ("95%") (-17.293) (-51.119)
+  post `postname' (-4.10)    ("80%") (-21.640) (-43.127)
+  post `postname' (-4.10)    ("90%") (-18.624) (-46.362)
+  post `postname' (-4.10)    ("95%") (-16.058) (-49.147)
+  post `postname' (-4.00)    ("80%") (-20.263) (-41.379)
+  post `postname' (-4.00)    ("90%") (-17.412) (-44.481)
+  post `postname' (-4.00)    ("95%") (-14.964) (-47.207)
+  post `postname' (-3.90)    ("80%") (-19.036) (-39.660)
+  post `postname' (-3.90)    ("90%") (-16.190) (-42.639)
+  post `postname' (-3.90)    ("95%") (-13.870) (-45.364)
+  post `postname' (-3.80)    ("80%") (-17.847) (-37.834)
+  post `postname' (-3.80)    ("90%") (-15.110) (-40.906)
+  post `postname' (-3.80)    ("95%") (-12.720) (-43.497)
+  post `postname' (-3.70)    ("80%") (-16.676) (-36.197)
+  post `postname' (-3.70)    ("90%") (-14.057) (-39.168)
+  post `postname' (-3.70)    ("95%") (-11.626) (-41.707)
+  post `postname' (-3.60)    ("80%") (-15.535) (-34.559)
+  post `postname' (-3.60)    ("90%") (-12.916) (-37.388)
+  post `postname' (-3.60)    ("95%") (-10.627) (-39.948)
+  post `postname' (-3.50)    ("80%") (-14.434) (-32.926)
+  post `postname' (-3.50)    ("90%") (-11.803) (-35.669)
+  post `postname' (-3.50)    ("95%") (-9.597)  (-38.121)
+  post `postname' (-3.40)    ("80%") (-13.331) (-31.332)
+  post `postname' (-3.40)    ("90%") (-10.826) (-34.036)
+  post `postname' (-3.40)    ("95%") (-8.621)  (-36.430)
+  post `postname' (-3.30)    ("80%") (-12.225) (-29.799)
+  post `postname' (-3.30)    ("90%") (-9.830)  (-32.450)
+  post `postname' (-3.30)    ("95%") (-7.833)  (-34.717)
+  post `postname' (-3.20)    ("80%") (-11.226) (-28.342)
+  post `postname' (-3.20)    ("90%") (-8.836)  (-30.832)
+  post `postname' (-3.20)    ("95%") (-6.837)  (-33.097)
+  post `postname' (-3.10)    ("80%") (-10.253) (-26.894)
+  post `postname' (-3.10)    ("90%") (-8.066)  (-29.298)
+  post `postname' (-3.10)    ("95%") (-5.936)  (-31.536)
+  post `postname' (-3.00)    ("80%") (-9.247)  (-25.472)
+  post `postname' (-3.00)    ("90%") (-7.041)  (-27.860)
+  post `postname' (-3.00)    ("95%") (-5.118)  (-29.943)
+  post `postname' (-2.90)    ("80%") (-8.420)  (-24.090)
+  post `postname' (-2.90)    ("90%") (-6.214)  (-26.359)
+  post `postname' (-2.90)    ("95%") (-4.304)  (-28.436)
+  post `postname' (-2.80)    ("80%") (-7.544)  (-22.695)
+  post `postname' (-2.80)    ("90%") (-5.410)  (-24.961)
+  post `postname' (-2.80)    ("95%") (-3.609)  (-26.912)
+  post `postname' (-2.70)    ("80%") (-6.690)  (-21.357)
+  post `postname' (-2.70)    ("90%") (-4.711)  (-23.586)
+  post `postname' (-2.70)    ("95%") (-2.846)  (-25.457)
+  post `postname' (-2.60)    ("80%") (-5.924)  (-20.076)
+  post `postname' (-2.60)    ("90%") (-3.970)  (-22.188)
+  post `postname' (-2.60)    ("95%") (-2.243)  (-24.112)
+  post `postname' (-2.50)    ("80%") (-5.118)  (-18.818)
+  post `postname' (-2.50)    ("90%") (-3.242)  (-20.838)
+  post `postname' (-2.50)    ("95%") (-1.510)  (-22.704)
+  post `postname' (-2.40)    ("80%") (-4.420)  (-17.593)
+  post `postname' (-2.40)    ("90%") (-2.598)  (-19.541)
+  post `postname' (-2.40)    ("95%") (-1.020)  (-21.328)
+  post `postname' (-2.30)    ("80%") (-3.742)  (-16.427)
+  post `postname' (-2.30)    ("90%") (-1.981)  (-18.319)
+  post `postname' (-2.30)    ("95%") (-0.413)  (-19.991)
+  post `postname' (-2.20)    ("80%") (-3.075)  (-15.298)
+  post `postname' (-2.20)    ("90%") (-1.377)  (-17.135)
+  post `postname' (-2.20)    ("95%") (0.104)   (-18.783)
+  post `postname' (-2.10)    ("80%") (-2.465)  (-14.191)
+  post `postname' (-2.10)    ("90%") (-0.793)  (-15.966)
+  post `postname' (-2.10)    ("95%") (0.594)   (-17.574)
+  post `postname' (-2.00)    ("80%") (-1.887)  (-13.158)
+  post `postname' (-2.00)    ("90%") (-0.312)  (-14.833)
+  post `postname' (-2.00)    ("95%") (1.087)   (-16.365)
+  post `postname' (-1.90)    ("80%") (-1.348)  (-12.142)
+  post `postname' (-1.90)    ("90%") (0.152)   (-13.732)
+  post `postname' (-1.90)    ("95%") (1.492)   (-15.242)
+  post `postname' (-1.80)    ("80%") (-0.823)  (-11.184)
+  post `postname' (-1.80)    ("90%") (0.598)   (-12.721)
+  post `postname' (-1.80)    ("95%") (1.884)   (-14.155)
+  post `postname' (-1.70)    ("80%") (-0.412)  (-10.236)
+  post `postname' (-1.70)    ("90%") (1.018)   (-11.733)
+  post `postname' (-1.70)    ("95%") (2.203)   (-13.124)
+  post `postname' (-1.60)    ("80%") (0.035)   (-9.368)
+  post `postname' (-1.60)    ("90%") (1.384)   (-10.801)
+  post `postname' (-1.60)    ("95%") (2.583)   (-12.102)
+  post `postname' (-1.50)    ("80%") (0.429)   (-8.493)
+  post `postname' (-1.50)    ("90%") (1.762)   (-9.895)
+  post `postname' (-1.50)    ("95%") (2.870)   (-11.147)
+  post `postname' (-1.40)    ("80%") (0.795)   (-7.761)
+  post `postname' (-1.40)    ("90%") (2.000)   (-9.048)
+  post `postname' (-1.40)    ("95%") (3.132)   (-10.199)
+  post `postname' (-1.30)    ("80%") (1.133)   (-6.961)
+  post `postname' (-1.30)    ("90%") (2.270)   (-8.209)
+  post `postname' (-1.30)    ("95%") (3.352)   (-9.362)
+  post `postname' (-1.20)    ("80%") (1.437)   (-6.239)
+  post `postname' (-1.20)    ("90%") (2.541)   (-7.450)
+  post `postname' (-1.20)    ("95%") (3.532)   (-8.528)
+  post `postname' (-1.10)    ("80%") (1.695)   (-5.559)
+  post `postname' (-1.10)    ("90%") (2.738)   (-6.720)
+  post `postname' (-1.10)    ("95%") (3.683)   (-7.836)
+  post `postname' (-1.00)    ("80%") (1.884)   (-4.940)
+  post `postname' (-1.00)    ("90%") (2.935)   (-6.031)
+  post `postname' (-1.00)    ("95%") (3.827)   (-7.122)
+  post `postname' (-0.90)    ("80%") (2.062)   (-4.369)
+  post `postname' (-0.90)    ("90%") (3.080)   (-5.423)
+  post `postname' (-0.90)    ("95%") (3.967)   (-6.415)
+  post `postname' (-0.80)    ("80%") (2.246)   (-3.840)
+  post `postname' (-0.80)    ("90%") (3.199)   (-4.861)
+  post `postname' (-0.80)    ("95%") (4.072)   (-5.779)
+  post `postname' (-0.70)    ("80%") (2.375)   (-3.374)
+  post `postname' (-0.70)    ("90%") (3.299)   (-4.332)
+  post `postname' (-0.70)    ("95%") (4.166)   (-5.293)
+  post `postname' (-0.60)    ("80%") (2.502)   (-2.944)
+  post `postname' (-0.60)    ("90%") (3.385)   (-3.870)
+  post `postname' (-0.60)    ("95%") (4.256)   (-4.758)
+  post `postname' (-0.50)    ("80%") (2.593)   (-2.587)
+  post `postname' (-0.50)    ("90%") (3.470)   (-3.442)
+  post `postname' (-0.50)    ("95%") (4.316)   (-4.289)
+  post `postname' (-0.40)    ("80%") (2.683)   (-2.248)
+  post `postname' (-0.40)    ("90%") (3.543)   (-3.051)
+  post `postname' (-0.40)    ("95%") (4.376)   (-3.876)
+  post `postname' (-0.30)    ("80%") (2.769)   (-1.970)
+  post `postname' (-0.30)    ("90%") (3.609)   (-2.732)
+  post `postname' (-0.30)    ("95%") (4.436)   (-3.463)
+  post `postname' (-0.20)    ("80%") (2.841)   (-1.692)
+  post `postname' (-0.20)    ("90%") (3.675)   (-2.430)
+  post `postname' (-0.20)    ("95%") (4.495)   (-3.116)
+  post `postname' (-0.10)    ("80%") (2.914)   (-1.451)
+  post `postname' (-0.10)    ("90%") (3.741)   (-2.142)
+  post `postname' (-0.10)    ("95%") (4.542)   (-2.819)
+  post `postname' (0.00)     ("80%") (2.986)   (-1.239)
+  post `postname' (0.00)     ("90%") (3.794)   (-1.894)
+  post `postname' (0.00)     ("95%") (4.587)   (-2.534)
+  post `postname' (0.10)     ("80%") (3.040)   (-1.053)
+  post `postname' (0.10)     ("90%") (3.845)   (-1.653)
+  post `postname' (0.10)     ("95%") (4.632)   (-2.221)
+  post `postname' (0.20)     ("80%") (3.089)   (-0.887)
+  post `postname' (0.20)     ("90%") (3.896)   (-1.440)
+  post `postname' (0.20)     ("95%") (4.678)   (-2.005)
+  post `postname' (0.30)     ("80%") (3.139)   (-0.729)
+  post `postname' (0.30)     ("90%") (3.948)   (-1.255)
+  post `postname' (0.30)     ("95%") (4.723)   (-1.763)
+  post `postname' (0.40)     ("80%") (3.188)   (-0.577)
+  post `postname' (0.40)     ("90%") (3.999)   (-1.080)
+  post `postname' (0.40)     ("95%") (4.765)   (-1.560)
+  post `postname' (0.50)     ("80%") (3.238)   (-0.439)
+  post `postname' (0.50)     ("90%") (4.043)   (-0.919)
+  post `postname' (0.50)     ("95%") (4.803)   (-1.371)
+  post `postname' (0.60)     ("80%") (3.284)   (-0.314)
+  post `postname' (0.60)     ("90%") (4.088)   (-0.771)
+  post `postname' (0.60)     ("95%") (4.841)   (-1.196)
+  post `postname' (0.70)     ("80%") (3.328)   (-0.196)
+  post `postname' (0.70)     ("90%") (4.132)   (-0.639)
+  post `postname' (0.70)     ("95%") (4.879)   (-1.036)
+  post `postname' (0.80)     ("80%") (3.373)   (-0.084)
+  post `postname' (0.80)     ("90%") (4.177)   (-0.509)
+  post `postname' (0.80)     ("95%") (4.916)   (-0.892)
+  post `postname' (0.90)     ("80%") (3.418)   (0.021)
+  post `postname' (0.90)     ("90%") (4.222)   (-0.395)
+  post `postname' (0.90)     ("95%") (4.954)   (-0.753)
+  post `postname' (1.00)     ("80%") (3.462)   (0.106)
+  post `postname' (1.00)     ("90%") (4.260)   (-0.282)
+  post `postname' (1.00)     ("95%") (4.992)   (-0.627)
+  postclose `postname'
+  use `postfile', clear
 
 end
 
@@ -511,9 +523,9 @@ end
 
 ***************************************************************************************************/
 program define make_table2_appendix
-    tempfile postfile
-    tempname postname
-    postfile `postname' float delta float tstat float cmax float cmin using `postfile'
+  tempfile postfile
+  tempname postname
+  postfile `postname' float delta float tstat float cmax float cmin using `postfile'
   post `postname' (-1.000)    (-5.0) (-31.539) (-64.454)
   post `postname' (-1.000)    (-4.9) (-29.945) (-62.272)
   post `postname' (-1.000)    (-4.8) (-28.531) (-60.181)
