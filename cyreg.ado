@@ -17,6 +17,9 @@ program define cyreg, eclass
   tokenize `varlist'
   local y `1'
   local x `2'
+  tempvar tousex
+  gen `tousex' = !missing(`x') `if' `in'
+  replace `tousex' = 0 if `tousex' == .
   if `nlag' == 0 {
     bic F.`x', maxlag(`maxlag')
     local biclag = r(optlag)
@@ -51,6 +54,7 @@ program define cyreg, eclass
       qui predict `rese', res
       tempvar resue
       qui gen `resue' = `rese' * `resu'
+      sum `resue' if `touse'
       local invx = r(mean) > 0
       if `invx'{
         local inv
@@ -61,7 +65,7 @@ program define cyreg, eclass
         local newx `x'
       }
 
-    
+
     * ----------------------------
     * Step 1: run OLS regressions
     * ----------------------------
@@ -74,7 +78,7 @@ program define cyreg, eclass
 
     qui predict `resu', res
     qui gen `resusq' = `resu'^2
-    qui sum `resusq'
+    qui sum `resusq' if `touse'
     local sigma_u = sqrt(r(sum) / (`T' - 2))
 
     * run the AR(p) estimation
@@ -93,10 +97,9 @@ program define cyreg, eclass
     }
     qui predict `rese', res
     qui gen `resesq' = `rese'^2
-    qui sum `resesq'
+    qui sum `resesq' if `touse'
     local sigma_e = sqrt(r(sum) / (`T' - 2))
     local omega = sqrt(`sigma_e'^2/(1-`sumpsi')^2)
-
     * compute covariance of errors
     tempvar resue
     qui gen `resue' = `rese' * `resu'
@@ -112,16 +115,17 @@ program define cyreg, eclass
     qui reg F.`newx' `newx' if `touse'
     qui predict `tempv', res
     qui gen `tempvsq' = `tempv'^2
-    qui sum `tempvsq'
+    qui sum `tempvsq' if `touse'
     local sigma_v = sqrt(r(sum) / (`T' - 2))
     local SErho = _se[`newx']
 
     * ----------------------------
     * Step 3: Compute the DF-GLS statistic for rho
     * ----------------------------
-    qui reg F.`newx' `newx' if `touse'
+    /* use tousex to mimic cambell yogo table*/
+    qui reg F.`newx' `newx' if `tousex'
     local rho = _b[`newx']
-    qui dfgls `newx', maxlag(`=`biclag'-1') notrend
+    qui dfgls `newx' if `tousex', maxlag(`=`biclag'-1') notrend
     if `biclag' == 1{
       local tstat = r(dft0)
     }
@@ -152,6 +156,8 @@ program define cyreg, eclass
     make_table2_appendix
     qui gen tstat_dist = abs(`tstat' - tstat)
     qui gen delta_dist = abs(`delta' - delta)
+
+
     sort delta_dist tstat_dist
     local Qminrho = 1 + `=cmin[1]' / `T'
     local Qmaxrho = 1 + `=cmax[1]' / `T'
@@ -161,20 +167,25 @@ program define cyreg, eclass
 
     * ----------------------------
     * Step 4: Compute the Bonferroni interval
-    * note that omega = sigma_v if p == 1 so the second term disappears in the summation
+    * note that omega = sigma_e if p == 1 so the second term disappears in the summation
     * ----------------------------
-
+    if `biclag' == 1{
+      assert `sigma_e' == `sigma_v'
+    }
     foreach suffix in min max{
       tempvar y`suffix'
-      qui gen `y`suffix'' = `y' - (`sigma_ue') / (`sigma_e'^2) * ///
+      di `Q`suffix'rho'
+      di (`sigma_ue') / (`sigma_e' * `omega')
+      qui gen `y`suffix'' = `y' - (`sigma_ue') / (`sigma_e' * `omega') * ///
       (F.`newx' - (`Q`suffix'rho') * `newx')
       qui reg `y`suffix'' `newx' if `touse'
+      di _b[`newx']
       local Q`suffix'bmin = _b[`newx'] ///
-      + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
-      - 1.645 *  sqrt((1 - (`delta')^2))  * `SEbeta'
+      + (`T'-2)/2 * (`sigma_ue') / ((`sigma_e') * (`omega')) * ((`omega')^2/(`sigma_v')^2 - 1) * (`SErho')^2 ///
+      - 1.645 *  sqrt((1 - (`delta')^2))  * (`SEbeta')
       local Q`suffix'bmax = _b[`newx'] ///
-      + (`T'-2)/2 * `sigma_ue' / (`sigma_e' * `omega') * (`omega'^2/`sigma_v'^2 - 1) * `SErho'^2 ///
-      + 1.645 * sqrt((1 - (`delta')^2))  * `SEbeta'
+      + (`T'-2)/2 * (`sigma_ue') / ((`sigma_e') * (`omega')) * ((`omega')^2/(`sigma_v')^2 - 1) * (`SErho')^2 ///
+      + 1.645 * sqrt((1 - (`delta')^2))  * (`SEbeta')
     }
     * output values
 
@@ -218,6 +229,7 @@ program define cyreg, eclass
       ereturn scalar Qmaxbmin = `Qmaxbmin'
       ereturn scalar Qmaxbmax = `Qmaxbmax'
     }
+    ereturn scalar bscale = (`sigma_e')/(`sigma_u')
 
     * ----------------------------
     * Step 5-6: Produce the chart if needed
@@ -226,7 +238,12 @@ program define cyreg, eclass
     di in gr "Number of lags:" in ye _column(70) %1.0f e(nlag)
     di in gr "Correlation (delta):" in ye _column(70)  %4.3f e(delta)
     di in gr "Persistence (rho) 95 % CI:" in ye _column(70)  "[`: display %4.3f e(minrho)', `: display %4.3f e(maxrho)']"
-    di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(Qmaxbmin)', `: display %4.3f e(Qminbmax)']"
+    if `invx'{
+      di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(Qminbmin)', `: display %4.3f e(Qmaxbmax)']"
+    }
+    else{
+      di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(Qmaxbmin)', `: display %4.3f e(Qminbmax)']"
+    }
 
     if "`nograph'" == "" {
       local ylabelmin = floor(10 * min(e(Qminbmin), e(Qmaxbmin), -0.1)) / 10
