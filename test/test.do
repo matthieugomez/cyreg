@@ -6,6 +6,7 @@ cap program drop cyreg
 cap program drop bic
 cap program drop make_table1_appendix 
 cap program drop make_table2_appendix 
+cap program drop HeaderDisplay
 
 qui do cyreg.ado
 insheet using "test/CRSP_A.txt", clear
@@ -24,8 +25,12 @@ assert abs(e(maxrho) - 1.050) <= 0.01
 assert abs(e(Qminrho) - .925) <= 0.01 
 assert abs(e(Qmaxrho) - 1.01) <= 0.01 
 /*Table 5 Panel A Annual */
+/* reported value by CY is scaled by bscale, sigma_e/sigma_u */
 assert abs(e(Qmaxbmin) * e(bscale) - 0.014) <= 0.01 
 assert abs(e(Qminbmax) * e(bscale) - 0.188) <= 0.01 
+
+
+
 
 /* mimic values from Table 4 Panel C Annual */
 cyreg F.ret ldp if inrange(time, 1952, 2002)

@@ -12,14 +12,17 @@ program define cyreg, eclass
   }
 
   marksample touse
+  tokenize `varlist'
+  local originaly `1'
+  local originalx `2'
   fvrevar `varlist' if `touse'
   local varlist = r(varlist)
   tokenize `varlist'
   local y `1'
   local x `2'
   tempvar tousex
-  gen `tousex' = !missing(`x') `if' `in'
-  replace `tousex' = 0 if `tousex' == .
+  qui gen `tousex' = !missing(`x') `if' `in'
+  qui replace `tousex' = 0 if `tousex' == .
   if `nlag' == 0 {
     bic F.`x', maxlag(`maxlag')
     local biclag = r(optlag)
@@ -54,12 +57,12 @@ program define cyreg, eclass
       qui predict `rese', res
       tempvar resue
       qui gen `resue' = `rese' * `resu'
-      sum `resue' if `touse'
+      qui sum `resue' if `touse'
       local invx = r(mean) > 0
       if `invx'{
         local inv
         tempvar newx
-        gen `newx' = -`x'
+        qui gen `newx' = -`x'
       }
       else{
         local newx `x'
@@ -144,7 +147,7 @@ program define cyreg, eclass
     * compute ci for rho
     preserve
     make_table1_appendix
-    keep if size == "95%"
+    qui keep if size == "95%"
     qui gen tstat_dist = abs(`tstat' - tstat)
     sort tstat_dist
     local minrho = 1 + `=cmin[1]' / `T'
@@ -174,12 +177,9 @@ program define cyreg, eclass
     }
     foreach suffix in min max{
       tempvar y`suffix'
-      di `Q`suffix'rho'
-      di (`sigma_ue') / (`sigma_e' * `omega')
       qui gen `y`suffix'' = `y' - (`sigma_ue') / (`sigma_e' * `omega') * ///
       (F.`newx' - (`Q`suffix'rho') * `newx')
       qui reg `y`suffix'' `newx' if `touse'
-      di _b[`newx']
       local Q`suffix'bmin = _b[`newx'] ///
       + (`T'-2)/2 * (`sigma_ue') / ((`sigma_e') * (`omega')) * ((`omega')^2/(`sigma_v')^2 - 1) * (`SErho')^2 ///
       - 1.645 *  sqrt((1 - (`delta')^2))  * (`SEbeta')
@@ -193,7 +193,7 @@ program define cyreg, eclass
 
 
     ereturn clear
-    ereturn post `b' `V', obs(`T') esample(`touse') dof(2) depname(`y') 
+    ereturn post `b' `V', obs(`T') esample(`touse') dof(2) depname("`originaly'") 
     ereturn scalar r2 = `r2'
     ereturn scalar r2_a = `r2_a'
     /* non corrected regression */
@@ -206,6 +206,7 @@ program define cyreg, eclass
     }
 
     /* ar(p) structure */
+    ereturn scalar N = `T'
     ereturn scalar nlag = `biclag'
     ereturn scalar DFGLS = `tstat'
     ereturn scalar minrho = `minrho'
@@ -235,16 +236,32 @@ program define cyreg, eclass
     * Step 5-6: Produce the chart if needed
     * ----------------------------
     ereturn display
-    di in gr "Number of lags:" in ye _column(70) %1.0f e(nlag)
-    di in gr "Correlation (delta):" in ye _column(70)  %4.3f e(delta)
-    di in gr "Persistence (rho) 95 % CI:" in ye _column(70)  "[`: display %4.3f e(minrho)', `: display %4.3f e(maxrho)']"
+
+
+    tempname left right
+    .`left' = {}
+    .`right' = {}
+    local width 78
+    local colwidths 1 30 41 67
+    local i 0
+    foreach c of local colwidths {
+      local ++i
+      local c`i' `c'
+      local C`i' _col(`c')
+    }
+    local max_len_title = `c3' - 2
+    local c4wfmt1 = `c4wfmt' + 1
+    .`right'.Arrpush `C3' "Number of obs" `C4' "= " as res %10.3g e(N)
+    .`right'.Arrpush `C3' "Number of lags" `C4' "= " as res %10.3g e(nlag)
+    .`right'.Arrpush `C3' "Correlation (delta)" `C4' "= " as res %10.3f e(delta)
+    .`right'.Arrpush `C3' "Persistence (rho) 95 % CI" `C4' "= " "[`: display %4.3f e(minrho)', `: display %4.3f e(maxrho)']"
     if `invx'{
-      di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(Qminbmin)', `: display %4.3f e(Qmaxbmax)']"
+      .`right'.Arrpush `C3' "Coefficient (beta) 90% CI" `C4' "= "  "[`: display %4.3f e(Qminbmin)', `: display %4.3f e(Qmaxbmax)']"
     }
     else{
-      di in gr "Coefficient (beta) 90% CI:" in ye _column(70)  "[`: display %4.3f e(Qmaxbmin)', `: display %4.3f e(Qminbmax)']"
+      .`right'.Arrpush `C3' "Coefficient (beta) 90% CI" `C4' "= "  "[`: display %4.3f e(Qmaxbmin)', `: display %4.3f e(Qminbmax)']"
     }
-
+    HeaderDisplay `left' `right' `"`title'"' `"`title2'"' `"`title3'"' `"`title4'"' `"`title5'"'
     if "`nograph'" == "" {
       local ylabelmin = floor(10 * min(e(Qminbmin), e(Qmaxbmin), -0.1)) / 10
       local ylabelmax = ceil(10 * max(e(Qminbmax), e(Qmaxbmax), 0.1)) / 10
@@ -259,7 +276,7 @@ program define cyreg, eclass
       ylabel(`ylabelmin'(0.1)`ylabelmax', angle(0)) ///
       xlabel(`xlabelmin'(0.02)`xlabelmax') ///
       legend(order(1 "upper" 2 "lower")) ///
-      xtitle("Persistence rho") ytitle("Predictive coefficient beta") ///
+      xtitle("Persistence {&rho}") ytitle("Predictive coefficient {&beta}") ///
       graphregion(fcolor(white))  bgcolor(white)
     }
   end
@@ -292,6 +309,33 @@ program define cyreg, eclass
       }
     }
     return scalar optlag = `optlag'
+  end
+
+
+  program define HeaderDisplay
+    args left right title1 title2 title3 title4 title5
+
+    local nl = `.`left'.arrnels'
+    local nr = `.`right'.arrnels'
+    local K = max(`nl',`nr')
+
+    di
+    if `"`title1'"' != "" {
+      di as txt `"`title'"'
+      forval i = 2/5 {
+        if `"`title`i''"' != "" {
+          di as txt `"`title`i''"'
+        }
+      }
+      if `K' {
+        di
+      }
+    }
+
+    local c _c
+    forval i = 1/`K' {
+      di as txt `.`left'[`i']' as txt `.`right'[`i']'
+    }
   end
 
 /***************************************************************************************************
