@@ -141,8 +141,10 @@ program define cyreg, eclass
       display as error "DF-GLS tstat `tstat' is outside the range -5/1"
       exit
     }
+
+
     * ----------------------------
-    * Step 3: Compute the confidence interval for c
+    * Step 4: Compute the confidence interval for c
     * ----------------------------
     * compute ci for rho
     preserve
@@ -150,8 +152,23 @@ program define cyreg, eclass
     qui keep if size == "95%"
     qui gen tstat_dist = abs(`tstat' - tstat)
     sort tstat_dist
-    local minrho = 1 + `=cmin[1]' / `T'
-    local maxrho = 1 + `=cmax[1]' / `T'
+    local cmin = cmin[1]
+    local cmax = cmax[1]
+    local minrho = 1 + `cmin' / `T'
+    local maxrho = 1 + `cmax' / `T'
+    restore
+
+    * pretest. Look if confidence interval reject unit root clearly enough to have valid statistic
+    preserve
+    make_table1
+    qui gen delta_dist = abs(`delta' - delta)
+    sort delta_dist
+    if `cmin' >= `=cmax[1]' | `cmax' <= `=cmin[1]'{
+      local pretest "No"
+    }
+    else{
+      local pretest "Yes"
+    }
     restore
 
     /* now we're picking the  CI in the Bonferroni q test */
@@ -206,6 +223,7 @@ program define cyreg, eclass
     }
 
     /* ar(p) structure */
+    ereturn local pretest = "`pretest'"
     ereturn scalar N = `T'
     ereturn scalar nlag = `biclag'
     ereturn scalar DFGLS = `tstat'
@@ -255,6 +273,8 @@ program define cyreg, eclass
     .`right'.Arrpush `C3' "Number of lags" `C4' "= " as res %10.3g e(nlag)
     .`right'.Arrpush `C3' "Correlation (delta)" `C4' "= " as res %10.3f e(delta)
     .`right'.Arrpush `C3' "Persistence (rho) 95 % CI" `C4' "= " "[`: display %4.3f e(minrho)', `: display %4.3f e(maxrho)']"
+    .`right'.Arrpush `C3' "Pretest : does the usual t-test exceeds 7.5%?" `C4' "= " "`pretest'"
+
     if `invx'{
       .`right'.Arrpush `C3' "Coefficient (beta) 90% CI" `C4' "= "  "[`: display %4.3f e(Qminbmin)', `: display %4.3f e(Qmaxbmax)']"
     }
@@ -377,6 +397,58 @@ program define aux_dfgls, eclass
     ereturn scalar tstat = `tstat'
 end
 
+***************************************************************************************************/
+
+
+/***************************************************************************************************
+Table 1 Paper (pretest)
+***************************************************************************************************/
+program define make_table1
+  tempfile postfile
+  tempname postname
+  postfile `postname' float delta float cmin float cmax using `postfile'
+  post `postname' (-1.000) (-83.088) (8.537)
+  post `postname' (-0.975) (-81.259) (8.516)
+  post `postname' (-0.950) (-79.318) (8.326)
+  post `postname' (-0.925) (-76.404) (8.173)
+  post `postname' (-0.900) (-69.788) (7.977)
+  post `postname' (-0.875) (-68.460) (7.930)
+  post `postname' (-0.850) (-63.277) (7.856)
+  post `postname' (-0.825) (-59.563) (7.766)
+  post `postname' (-0.800) (-58.806) (7.683)
+  post `postname' (-0.775) (-57.618) (7.585)
+  post `postname' (-0.750) (-51.399) (7.514)
+  post `postname' (-0.725) (-50.764) (7.406)
+  post `postname' (-0.700) (-42.267) (7.131)
+  post `postname' (-0.675) (-41.515) (6.929)
+  post `postname' (-0.650) (-40.720) (6.820)
+  post `postname' (-0.625) (-36.148) (6.697)
+  post `postname' (-0.600) (-33.899) (6.557)
+  post `postname' (-0.575) (-31.478) (6.419)
+  post `postname' (-0.550) (-28.527) (6.301)
+  post `postname' (-0.525) (-27.255) (6.175)
+  post `postname' (-0.500) (-25.942) (6.028)
+  post `postname' (-0.475) (-23.013) (5.868)
+  post `postname' (-0.450) (-19.515) (5.646)
+  post `postname' (-0.425) (-17.701) (5.435)
+  post `postname' (-0.400) (-14.809) (5.277)
+  post `postname' (-0.375) (-13.436) (5.111)
+  post `postname' (-0.350) (-11.884) (4.898)
+  post `postname' (-0.325) (-10.457) (4.682)
+  post `postname' (-0.300) (-8.630) (4.412)
+  post `postname' (-0.275) (-6.824) (4.184)
+  post `postname' (-0.250) (-5.395) (3.934)
+  post `postname' (-0.225) (-4.431) (3.656)
+  post `postname' (-0.200) (-3.248) (3.306)
+  post `postname' (-0.175) (-1.952) (2.800)
+  post `postname' (-0.150) (0.614) (2.136)
+  post `postname' (-0.125) (0.0) (0.0)
+  postclose `postname'
+  use `postfile', clear
+end
+
+/***************************************************************************************************
+Table 1 Appendix
 ***************************************************************************************************/
 
 program define make_table1_appendix
@@ -3022,6 +3094,5 @@ program define make_table2_appendix
   use `postfile', clear
 end
 
-/***************************************************************************************************
 
-***************************************************************************************************/
+
