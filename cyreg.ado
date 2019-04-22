@@ -2,9 +2,12 @@
 * the syntax is such that y = r_t and x = x_{t-1}
 * Should be testing for a positive predictive coefficient
 
+
+* users should We set the maximum lag length p to four for annual, six for quarterly, and eight for monthly data
+
 program define cyreg, eclass
   version 12.1
-  syntax varlist(min=2 numeric ts) [if] [in],[ Nlag(integer 0) MAXlag(integer 10) NOGraph * ]
+  syntax varlist(min=2 numeric ts) [if] [in],[ Nlag(integer 0) MAXlag(integer 4) NOGraph * ]
   ereturn clear
   cap tsset
   if _rc{
@@ -190,7 +193,7 @@ program define cyreg, eclass
     * note that omega = sigma_e if p == 1 so the second term disappears in the summation
     * ----------------------------
     if `biclag' == 1{
-      assert `sigma_e' == `sigma_v'
+      assert abs(`sigma_e' - `sigma_v') <= 1e-5
     }
     foreach suffix in min max{
       tempvar y`suffix'
@@ -301,7 +304,6 @@ program define cyreg, eclass
     }
   end
 
-
   program define bic, rclass
     syntax varlist(min=1 numeric ts) [if] [in], [maxlag(integer 10)]
     marksample touse
@@ -312,20 +314,14 @@ program define cyreg, eclass
       di as error "maxlag must be >= 1"
       exit
     }
+    qui varsoc `x' if `touse', maxlag(`maxlag')
+    mat s = r(stats)
+    local optlag = 0
+    local bic = .
     foreach nlag of numlist 1/`maxlag'{
-      qui reg `x' L(1/`nlag').`x' if `touse'
-      qui estat ic
-      mat s = r(S)
-      if `nlag' == 1{
-        local optlag = 1
-        local bic = s[1, 6]
-      }
-      else{
-        local newbic = s[1, 6]
-        if `newbic' < `bic'{
-          local optlag = `nlag'
-          local bic = `newbic'
-        }
+      if s[1 + `nlag',  9] < `bic'{
+        local optlag = `nlag'
+        local bic = s[1 + `nlag',  9]
       }
     }
     return scalar optlag = `optlag'
