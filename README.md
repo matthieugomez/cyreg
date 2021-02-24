@@ -11,5 +11,23 @@ cyreg r L.x
 ```
 
 Options:
-- (optional) `nograph` to suppress the graph
-- (optional) `lag` to impose number of lags (otherwise chosen via BIC criterion)
+- `nograph` to suppress the graph
+- `lag` to impose number of lags (otherwise chosen via BIC criterion)
+
+
+# Installation
+
+```
+net install cyreg from("https://raw.githubusercontent.com/matthieugomez/cyreg/master/")
+```
+If you have a version of Stata < 13, you need to install it manually
+
+Click the "Download ZIP" button in the right column to download a zipfile.
+
+Extract it into a folder (e.g. ~/SOMEFOLDER)
+
+Run
+```
+cap ado uninstall cyreg
+net install cyreg, from("~/SOMEFOLDER")
+```
