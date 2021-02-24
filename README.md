@@ -1,4 +1,4 @@
-# stata-cyreg
+# cyreg
 Implements "Efficient tests of stock return predictability" Campbell Yogo (2006)
 
 The program computes the 90% confidence band using the CY method.
