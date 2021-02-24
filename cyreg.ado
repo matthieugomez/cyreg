@@ -43,7 +43,7 @@ program define cyreg, eclass
 
       /* compute b, V and check delta < 0 */
       tempvar resu
-      qui reg `y' `x' if `touse'
+      qui reg `y' `originalx' if `touse'
       tempname b V
       mat `b' = e(b)
       mat `V' = e(V)

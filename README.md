@@ -1,9 +1,8 @@
-# stata-cyreg
-Implements "Efficient tests of stock return predictability" Campbell Yogo (2006)
+Implements "Efficient tests of stock return predictability" Campbell Yogo (2006) in Stata
 
-The program computes the 90% confidence band using the CY method.
+The program computes the 90% confidence band using the Campbell Yogo method.
 
-Syntax
+The syntax is as follows:
 ```
 tsset date
 cyreg r L.x

@@ -1,0 +1,14 @@
+v 0.1
+
+d cyreg. decompose the growth of top shares
+d
+d Author: Matthieu Gomez
+d
+d
+d KW: regression, predictability
+d
+d Requires: Stata version 11.2
+d
+d Distribution-Date: 20210101
+d
+f cyreg.ado

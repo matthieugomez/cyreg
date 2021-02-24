@@ -1,0 +1,9 @@
+v 0.1
+d Matthieu Gomez, Columbia University (mg3901@columbia.edu)
+p cyreg CYREG - implements "Efficient tests of stock return predictability" Campbell Yogo (2006)
+
+* l word-to-show path-or-url [description]
+* t: Directories within site:
+* t path [description]
+* Packages:
+* p pkgname [description]
