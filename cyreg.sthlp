@@ -34,7 +34,7 @@ The program computes the 90% confidence band using the CY method.
 {synoptline}
 
 {synopt:{opt nog:graph}} Does not display the graph corresponding to the 90% CI {p_end}
-{synopt:{opth lag(numlist)}} Impose number of lags. When left unspecified, the optimal number of lag is chosen via BIC criterion.
+{synopt:{opth lag(numlist)}} Impose number of lags. When left unspecified, the optimal number of lags is chosen via BIC criterion.{p_end}
 
 
 {marker examples}{...}

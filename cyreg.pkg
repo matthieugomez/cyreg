@@ -1,14 +1,18 @@
 v 0.1
 
-d cyreg. decompose the growth of top shares
+d cyreg. Efficient tests of stock return predictability (Campbell-Yogo 2006)
 d
-d Author: Matthieu Gomez
+d Author: Matthieu Gomez, Columbia University
 d
 d
 d KW: regression, predictability
 d
-d Requires: Stata version 11.2
+d Requires: Stata version 12.1
 d
-d Distribution-Date: 20210101
+d Distribution-Date: 20260330
 d
 f cyreg.ado
+f cyreg.sthlp
+f table/cyreg_table1.dta
+f table/cyreg_table1_appendix.dta
+f table/cyreg_table2_appendix.dta

@@ -16,18 +16,7 @@ Options:
 
 
 # Installation
-
+To install the package, run the following command in Stata
 ```
-net install cyreg from("https://raw.githubusercontent.com/matthieugomez/cyreg/master/")
-```
-If you have a version of Stata < 13, you need to install it manually
-
-Click the "Download ZIP" button in the right column to download a zipfile.
-
-Extract it into a folder (e.g. ~/SOMEFOLDER)
-
-Run
-```
-cap ado uninstall cyreg
-net install cyreg, from("~/SOMEFOLDER")
+net install cyreg from("https://raw.githubusercontent.com/matthieugomez/cyreg/main/")
 ```
